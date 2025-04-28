@@ -1,0 +1,51 @@
+---
+# example
+# $ ansible-playbook -i inventories/dev -l vm1.its.tech playbooks/pgbackup.yml
+
+- name: postgresql backups
+  hosts: pgbackup
+
+  tasks:
+  - name: check if pgbackup_dbs variable is not empty
+    assert:
+      that:
+        - "pgbackup_dbs | length > 0"
+      msg:
+        - "Ensure pgbackup_dbs variable is not empty"
+    tags:
+      - always
+
+  - name: check if db connection variables are not empty
+    assert:
+      that:
+        - "pgbackup_host | length > 0"
+        - "pgbackup_user | length > 0"
+        - "pgbackup_vault_password | length > 0"
+      msg:
+        - "Ensure db connection variables are not empty"
+    tags:
+      - always
+
+  - name: prepare backups directory
+    become: true
+    file:
+      path: "{{ pgbackup_dir }}"
+      owner: "{{ ansible_user_id }}"
+      group: root
+      state: directory
+      mode: 0700
+
+  - name: Create pg backup script
+    copy:
+      src: "pgbackup.sh"
+      dest: "pgbackup.sh"
+      mode: 0700
+
+  - name: Run pg backup script
+    shell: "flock -n /tmp/pgbackup.lock --command ./pgbackup.sh"
+    environment:
+      PGUSER: "{{ pgbackup_user }}"
+      PGHOST: "{{ pgbackup_host }}"
+      PGPASSWORD: "{{ pgbackup_vault_password }}"
+      PGBACKUP_DATABASES: "{{ pgbackup_dbs | join(' ') }}"
+      PGBACKUP_DIR: "{{ pgbackup_dir }}"
